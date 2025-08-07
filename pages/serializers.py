@@ -37,13 +37,6 @@ class CharitySerializer(serializers.ModelSerializer):
         model = Charity
         fields = '__all__'
 
-class DonationReadSerializer(serializers.ModelSerializer):
-    """ Serializer for reading donation data with nested details. """
-    recipient_charity = CharitySerializer(read_only=True)
-    source_daf = DAFSerializer(read_only=True)
-    class Meta:
-        model = Donation
-        fields = ['id', 'amount', 'purpose', 'is_anonymous', 'status', 'date_recommended', 'recipient_charity', 'source_daf']
 
 class CharityNestedSerializer(serializers.ModelSerializer):
     class Meta:
@@ -52,6 +45,14 @@ class CharityNestedSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'tin': {'validators': []},
         }
+
+class DonationReadSerializer(serializers.ModelSerializer):
+    """ Serializer for reading donation data with nested details. """
+    recipient_charity = CharitySerializer(read_only=True)
+    source_daf = DAFSerializer(read_only=True)
+    class Meta:
+        model = Donation
+        fields = ['id', 'amount', 'purpose', 'is_anonymous', 'status', 'date_recommended', 'recipient_charity', 'source_daf']
 
 class DonationWriteSerializer(serializers.ModelSerializer):
     recipient_charity = serializers.SlugRelatedField(
