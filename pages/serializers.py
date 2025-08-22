@@ -1,5 +1,3 @@
-# In your app's serializers.py
-
 from rest_framework import serializers
 from .models import User, DAF, Charity, Donation, Vote, Funding_Request,Document
 

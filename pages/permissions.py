@@ -1,5 +1,3 @@
-# In your app's permissions.py
-
 from rest_framework import permissions
 from .models import UserRole
 
