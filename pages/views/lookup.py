@@ -630,7 +630,7 @@ def _perform_database_search(name: str, tin: str):
             reverse=True,
         )
 
-    MAX_ENRICH = 5
+    MAX_ENRICH = 10
     enriched = []
     any_updated = False
 
