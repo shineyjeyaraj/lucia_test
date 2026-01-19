@@ -5,11 +5,11 @@ from difflib import SequenceMatcher
 from urllib.parse import urljoin, urlparse, urldefrag
 import time
 
-# from selenium import webdriver
-# from selenium.webdriver.common.by import By
-# from selenium.webdriver.chrome.options import Options
-# from selenium.webdriver.chrome.service import Service
-# from webdriver_manager.chrome import ChromeDriverManager
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 import requests
 from bs4 import BeautifulSoup
@@ -26,19 +26,19 @@ from ..serializers import CharitySerializer
 
 from openai import OpenAI
 
-# def _init_selenium():
-#     options = Options()
-#     options.add_argument("--headless=new")
-#     options.add_argument("--disable-gpu")
-#     options.add_argument("--no-sandbox")
-#     options.add_argument("--window-size=1920,1080")
-#     options.add_experimental_option("excludeSwitches", ["enable-logging"])
+def _init_selenium():
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--window-size=1920,1080")
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
 
 
-#     return webdriver.Chrome(
-#         service=Service(ChromeDriverManager().install()),
-#         options=options,
-#     )
+    return webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options,
+    )
 
 client = OpenAI()
 SERP_API_KEY = os.getenv("SERP_API_KEY")
@@ -67,308 +67,308 @@ def _store_last_matches(request, matches):
 def _get_last_matches(request):
     return request.session.get("ai_last_matches", [])
 
-# EMAIL_REGEX = re.compile(
-#     r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}\b"
-# )
+EMAIL_REGEX = re.compile(
+    r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}\b"
+)
 
-# PHONE_REGEX = re.compile(
-#     r"""
-#     (?:
-#         \+?\d{1,3}[\s.-]?
-#     )?
-#     (?:\(?\d{2,4}\)?[\s.-]?)?
-#     \d{3,4}[\s.-]?\d{4}
-#     """,
-#     re.VERBOSE,
-# )
+PHONE_REGEX = re.compile(
+    r"""
+    (?:
+        \+?\d{1,3}[\s.-]?
+    )?
+    (?:\(?\d{2,4}\)?[\s.-]?)?
+    \d{3,4}[\s.-]?\d{4}
+    """,
+    re.VERBOSE,
+)
 
-# def _init_selenium():
-#     options = Options()
-#     options.add_argument("--headless=new")
-#     options.add_argument("--disable-gpu")
-#     options.add_argument("--no-sandbox")
-#     options.add_argument("--window-size=1920,1080")
+def _init_selenium():
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--window-size=1920,1080")
 
-#     return webdriver.Chrome(
-#         service=Service(ChromeDriverManager().install()),
-#         options=options,
-#     )
+    return webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options,
+    )
 
-# def clean_email(email: str):
-#     email = email.strip().lower()
-#     email = email.replace("%20", "")
-#     email = email.rstrip(".,;:")
+def clean_email(email: str):
+    email = email.strip().lower()
+    email = email.replace("%20", "")
+    email = email.rstrip(".,;:")
 
-#     if email.count("@") != 1:
-#         return None
-#     if ".." in email:
-#         return None
-#     if not re.match(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", email):
-#         return None
+    if email.count("@") != 1:
+        return None
+    if ".." in email:
+        return None
+    if not re.match(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", email):
+        return None
 
-#     return email
+    return email
 
-# def is_valid_phone(number: str):
-#     digits = re.sub(r"\D", "", number)
+def is_valid_phone(number: str):
+    digits = re.sub(r"\D", "", number)
 
-#     # US-only logic
-#     if len(digits) == 11 and digits.startswith("1"):
-#         digits = digits[1:]
-#     elif len(digits) != 10:
-#         return False
+    # US-only logic
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    elif len(digits) != 10:
+        return False
 
-#     # reject obvious junk
-#     if digits in {
-#         "0000000000", "1111111111", "2222222222",
-#         "1234567890"
-#     }:
-#         return False
+    # reject obvious junk
+    if digits in {
+        "0000000000", "1111111111", "2222222222",
+        "1234567890"
+    }:
+        return False
 
-#     # reject timestamps / counters
-#     if digits.startswith("17"):
-#         return False
+    # reject timestamps / counters
+    if digits.startswith("17"):
+        return False
 
-#     return True
+    return True
 
-# def normalize_url(url):
-#     url, _ = urldefrag(url)
-#     return url.split("?")[0].rstrip("/")
-
-# def get_charity_contact_info(charity_name, address):
-#     """
-#     Human-accurate enrichment:
-#     1) Homepage footer/header/nav
-#     2) Contact / About pages
-#     3) Visible text only
-#     """
-
-#     from os import getenv
-
-#     if not SERP_API_KEY:
-#         return {"website": None, "emails": [], "phones": []}
-#     print(f"{charity_name} official site {address}")
-#     # --- SERPAPI ---
-#     try:
-#         serp = requests.get(
-#             "https://serpapi.com/search.json",
-#             params={
-#                 "engine": "google",
-#                 "q": f"{charity_name} official site {address}",
-#                 "api_key": SERP_API_KEY,
-#             },
-#             timeout=10,
-#         ).json()
-
-#         website = serp.get("organic_results", [{}])[0].get("link")
-#     except Exception:
-#         return {"website": None, "emails": [], "phones": []}
-
-#     if not website:
-#         return {"website": None, "emails": [], "phones": []}
-
-#     driver = _init_selenium()
-
-#     all_emails = set()
-#     all_phones = set()
-#     visited = set()
-
-#     def scrape_current_page():
-#         containers = []
-
-#         # structural areas first
-#         for tag in ["footer", "header", "nav"]:
-#             try:
-#                 containers.append(driver.find_element(By.TAG_NAME, tag))
-#             except Exception:
-#                 pass
-
-#         # keyword-based fallback
-#         for kw in ["contact", "reach", "email", "phone", "call"]:
-#             try:
-#                 containers.extend(
-#                     driver.find_elements(
-#                         By.XPATH,
-#                         f"//*[contains(translate(text(), "
-#                         f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{kw}')]"
-#                     )
-#                 )
-#             except Exception:
-#                 pass
-
-#         seen = set()
-#         for el in containers:
-#             text = el.text
-#             if not text or text in seen:
-#                 continue
-#             seen.add(text)
-
-#             for e in EMAIL_REGEX.findall(text):
-#                 cleaned = clean_email(e)
-#                 if cleaned:
-#                     all_emails.add(cleaned)
-
-#             for p in PHONE_REGEX.findall(text):
-#                 cleaned = re.sub(r"[^\d+]", "", p)
-#                 if is_valid_phone(cleaned):
-#                     all_phones.add(cleaned)
-
-#         # trusted mailto / tel
-#         for a in driver.find_elements(By.TAG_NAME, "a"):
-#             href = a.get_attribute("href")
-#             if not href:
-#                 continue
-
-#             if href.startswith("mailto:"):
-#                 email = clean_email(href.replace("mailto:", "").split("?")[0])
-#                 if email:
-#                     all_emails.add(email)
-
-#             elif href.startswith("tel:"):
-#                 cleaned = re.sub(r"[^\d+]", "", href)
-#                 if is_valid_phone(cleaned):
-#                     all_phones.add(cleaned)
-
-#     try:
-#         # 1️⃣ Homepage
-#         driver.get(website)
-#         time.sleep(2)
-#         visited.add(website)
-#         scrape_current_page()
-
-#         # 2️⃣ Contact/About pages
-#         base_domain = urlparse(website).netloc
-#         candidate_links = set()
-
-#         for a in driver.find_elements(By.TAG_NAME, "a"):
-#             href = a.get_attribute("href")
-#             if not href:
-#                 continue
-
-#             clean = normalize_url(href.lower())
-#             if any(k in clean for k in ["contact", "about", "support", "team"]):
-#                 full = normalize_url(urljoin(website, href))
-#                 if urlparse(full).netloc == base_domain:
-#                     candidate_links.add(full)
-
-#         for link in list(candidate_links)[:4]:
-#             if link in visited:
-#                 continue
-#             visited.add(link)
-
-#             try:
-#                 driver.get(link)
-#                 time.sleep(2)
-#                 scrape_current_page()
-#             except Exception:
-#                 pass
-
-#     finally:
-#         driver.quit()
-
-#     print(website)
-#     print(all_emails)
-#     print(all_phones)
-
-#     return {
-#         "website": website,
-#         "emails": sorted(all_emails),
-#         "phones": sorted(all_phones),
-#     }
-
+def normalize_url(url):
+    url, _ = urldefrag(url)
+    return url.split("?")[0].rstrip("/")
 
 def get_charity_contact_info(charity_name, address):
     """
-    Try to find website / email / phone for a charity using SERPAPI + scraping.
-    Only used when DB record is missing contact info.
+    Human-accurate enrichment:
+    1) Homepage footer/header/nav
+    2) Contact / About pages
+    3) Visible text only
     """
+
+    from os import getenv
+
     if not SERP_API_KEY:
         return {"website": None, "emails": [], "phones": []}
-
-    serp_url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google",
-        "q": f"{charity_name} official site in {address}",
-        "api_key": SERP_API_KEY,
-    }
-
+    print(f"{charity_name} official site {address}")
+    # --- SERPAPI ---
     try:
-        res = requests.get(serp_url, params=params, timeout=10)
-        data = res.json()
-        website = None
-        if "organic_results" in data and len(data["organic_results"]) > 0:
-            website = data["organic_results"][0].get("link", None)
-    except Exception as e:
-        print(f"[SERP ERROR] {charity_name}: {e}")
+        serp = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google",
+                "q": f"{charity_name} official site {address}",
+                "api_key": SERP_API_KEY,
+            },
+            timeout=10,
+        ).json()
+
+        website = serp.get("organic_results", [{}])[0].get("link")
+    except Exception:
         return {"website": None, "emails": [], "phones": []}
 
     if not website:
-        print(f"[SERP] No website found for {charity_name}")
         return {"website": None, "emails": [], "phones": []}
 
-    def scrape_page(url):
-        try:
-            html = requests.get(url, timeout=10).text
-            emails = re.findall(
-                r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
-                html,
-            )
-            phones = re.findall(
-                r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
-                html,
-            )
-            emails = list(
-                set(
-                    [
-                        e
-                        for e in emails
-                        if not e.lower().endswith(
-                            (
-                                ".png",
-                                ".jpg",
-                                ".jpeg",
-                                "1",
-                                "2",
-                                "3",
-                                "4",
-                                "5",
-                                "6",
-                                "7",
-                                "8",
-                                "9",
-                                "0",
-                            )
-                        )
-                    ]
+    driver = _init_selenium()
+
+    all_emails = set()
+    all_phones = set()
+    visited = set()
+
+    def scrape_current_page():
+        containers = []
+
+        # structural areas first
+        for tag in ["footer", "header", "nav"]:
+            try:
+                containers.append(driver.find_element(By.TAG_NAME, tag))
+            except Exception:
+                pass
+
+        # keyword-based fallback
+        for kw in ["contact", "reach", "email", "phone", "call"]:
+            try:
+                containers.extend(
+                    driver.find_elements(
+                        By.XPATH,
+                        f"//*[contains(translate(text(), "
+                        f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{kw}')]"
+                    )
                 )
-            )
-            phones = list(set(phones))
-            return emails, phones, html
-        except Exception as e:
-            print(f"[SCRAPE ERROR] {url}: {e}")
-            return [], [], ""
+            except Exception:
+                pass
 
-    all_emails, all_phones, html = scrape_page(website)
-    soup = BeautifulSoup(html, "html.parser")
+        seen = set()
+        for el in containers:
+            text = el.text
+            if not text or text in seen:
+                continue
+            seen.add(text)
 
-    contact_links = []
-    for link in soup.find_all("a", href=True):
-        href = link["href"].lower()
-        if any(k in href for k in ["contact", "about", "team", "staff"]):
-            full_url = urljoin(website, href)
-            domain = urlparse(full_url).netloc
-            if domain == urlparse(website).netloc:
-                contact_links.append(full_url)
-    contact_links = list(set(contact_links))
+            for e in EMAIL_REGEX.findall(text):
+                cleaned = clean_email(e)
+                if cleaned:
+                    all_emails.add(cleaned)
 
-    for link in contact_links:
-        sub_emails, sub_phones, _ = scrape_page(link)
-        all_emails.extend(sub_emails)
-        all_phones.extend(sub_phones)
+            for p in PHONE_REGEX.findall(text):
+                cleaned = re.sub(r"[^\d+]", "", p)
+                if is_valid_phone(cleaned):
+                    all_phones.add(cleaned)
 
-    all_emails = list(set(all_emails))
-    all_phones = list(set(all_phones))
+        # trusted mailto / tel
+        for a in driver.find_elements(By.TAG_NAME, "a"):
+            href = a.get_attribute("href")
+            if not href:
+                continue
 
-    return {"website": website, "emails": all_emails, "phones": all_phones}
+            if href.startswith("mailto:"):
+                email = clean_email(href.replace("mailto:", "").split("?")[0])
+                if email:
+                    all_emails.add(email)
+
+            elif href.startswith("tel:"):
+                cleaned = re.sub(r"[^\d+]", "", href)
+                if is_valid_phone(cleaned):
+                    all_phones.add(cleaned)
+
+    try:
+        # 1️⃣ Homepage
+        driver.get(website)
+        time.sleep(2)
+        visited.add(website)
+        scrape_current_page()
+
+        # 2️⃣ Contact/About pages
+        base_domain = urlparse(website).netloc
+        candidate_links = set()
+
+        for a in driver.find_elements(By.TAG_NAME, "a"):
+            href = a.get_attribute("href")
+            if not href:
+                continue
+
+            clean = normalize_url(href.lower())
+            if any(k in clean for k in ["contact", "about", "support", "team"]):
+                full = normalize_url(urljoin(website, href))
+                if urlparse(full).netloc == base_domain:
+                    candidate_links.add(full)
+
+        for link in list(candidate_links)[:4]:
+            if link in visited:
+                continue
+            visited.add(link)
+
+            try:
+                driver.get(link)
+                time.sleep(2)
+                scrape_current_page()
+            except Exception:
+                pass
+
+    finally:
+        driver.quit()
+
+    print(website)
+    print(all_emails)
+    print(all_phones)
+
+    return {
+        "website": website,
+        "emails": sorted(all_emails),
+        "phones": sorted(all_phones),
+    }
+
+
+# def get_charity_contact_info(charity_name, address):
+#     """
+#     Try to find website / email / phone for a charity using SERPAPI + scraping.
+#     Only used when DB record is missing contact info.
+#     """
+#     if not SERP_API_KEY:
+#         return {"website": None, "emails": [], "phones": []}
+
+#     serp_url = "https://serpapi.com/search.json"
+#     params = {
+#         "engine": "google",
+#         "q": f"{charity_name} official site in {address}",
+#         "api_key": SERP_API_KEY,
+#     }
+
+#     try:
+#         res = requests.get(serp_url, params=params, timeout=10)
+#         data = res.json()
+#         website = None
+#         if "organic_results" in data and len(data["organic_results"]) > 0:
+#             website = data["organic_results"][0].get("link", None)
+#     except Exception as e:
+#         print(f"[SERP ERROR] {charity_name}: {e}")
+#         return {"website": None, "emails": [], "phones": []}
+
+#     if not website:
+#         print(f"[SERP] No website found for {charity_name}")
+#         return {"website": None, "emails": [], "phones": []}
+
+#     def scrape_page(url):
+#         try:
+#             html = requests.get(url, timeout=10).text
+#             emails = re.findall(
+#                 r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
+#                 html,
+#             )
+#             phones = re.findall(
+#                 r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
+#                 html,
+#             )
+#             emails = list(
+#                 set(
+#                     [
+#                         e
+#                         for e in emails
+#                         if not e.lower().endswith(
+#                             (
+#                                 ".png",
+#                                 ".jpg",
+#                                 ".jpeg",
+#                                 "1",
+#                                 "2",
+#                                 "3",
+#                                 "4",
+#                                 "5",
+#                                 "6",
+#                                 "7",
+#                                 "8",
+#                                 "9",
+#                                 "0",
+#                             )
+#                         )
+#                     ]
+#                 )
+#             )
+#             phones = list(set(phones))
+#             return emails, phones, html
+#         except Exception as e:
+#             print(f"[SCRAPE ERROR] {url}: {e}")
+#             return [], [], ""
+
+#     all_emails, all_phones, html = scrape_page(website)
+#     soup = BeautifulSoup(html, "html.parser")
+
+#     contact_links = []
+#     for link in soup.find_all("a", href=True):
+#         href = link["href"].lower()
+#         if any(k in href for k in ["contact", "about", "team", "staff"]):
+#             full_url = urljoin(website, href)
+#             domain = urlparse(full_url).netloc
+#             if domain == urlparse(website).netloc:
+#                 contact_links.append(full_url)
+#     contact_links = list(set(contact_links))
+
+#     for link in contact_links:
+#         sub_emails, sub_phones, _ = scrape_page(link)
+#         all_emails.extend(sub_emails)
+#         all_phones.extend(sub_phones)
+
+#     all_emails = list(set(all_emails))
+#     all_phones = list(set(all_phones))
+
+#     return {"website": website, "emails": all_emails, "phones": all_phones}
 
 def _search_with_openai(search_descriptor: str, previous_context=None):
     """
