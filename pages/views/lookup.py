@@ -2,10 +2,10 @@ import os
 import re
 import json
 from difflib import SequenceMatcher
-from urllib.parse import urljoin, urlparse
+# from urllib.parse import urljoin, urlparse
 
 import requests
-from bs4 import BeautifulSoup
+# from bs4 import BeautifulSoup
 
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
@@ -21,6 +21,7 @@ from openai import OpenAI
 
 client = OpenAI()
 SERP_API_KEY = os.getenv("SERP_API_KEY")
+APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
 
 
 def _get_context_from_session(request):
@@ -77,65 +78,120 @@ def get_charity_contact_info(charity_name, address):
         print(f"[SERP] No website found for {charity_name}")
         return {"website": None, "emails": [], "phones": []}
 
-    def scrape_page(url):
+    # def scrape_page(url):
+    #     try:
+    #         html = requests.get(url, timeout=10).text
+    #         emails = re.findall(
+    #             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
+    #             html,
+    #         )
+    #         phones = re.findall(
+    #             r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
+    #             html,
+    #         )
+    #         emails = list(
+    #             set(
+    #                 [
+    #                     e
+    #                     for e in emails
+    #                     if not e.lower().endswith(
+    #                         (
+    #                             ".png",
+    #                             ".jpg",
+    #                             ".jpeg",
+    #                             "1",
+    #                             "2",
+    #                             "3",
+    #                             "4",
+    #                             "5",
+    #                             "6",
+    #                             "7",
+    #                             "8",
+    #                             "9",
+    #                             "0",
+    #                         )
+    #                     )
+    #                 ]
+    #             )
+    #         )
+    #         phones = list(set(phones))
+    #         return emails, phones, html
+    #     except Exception as e:
+    #         print(f"[SCRAPE ERROR] {url}: {e}")
+    #         return [], [], ""
+
+    def scrape_page_with_apify(url: str):
+        """
+        Uses Apify actor: vdrmota/contact-info-scraper
+        Returns: (emails, phones)
+        """
+        if not APIFY_TOKEN:
+            print("[APIFY] Missing APIFY_API_TOKEN")
+            return [], []
+
+        run_url = (
+            "https://api.apify.com/v2/acts/"
+            "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
+        )
+
+        payload = {
+            "startUrls": [{"url": url}],
+            "maxDepth": 1,
+            "maxRequests": 5,
+            "proxyConfiguration": {"useApifyProxy": True},
+        }
+
         try:
-            html = requests.get(url, timeout=10).text
-            emails = re.findall(
-                r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
-                html,
+            res = requests.post(
+                run_url,
+                params={
+                    "token": APIFY_TOKEN,
+                    "clean": "true",
+                },
+                json=payload,
+                timeout=90,
             )
-            phones = re.findall(
-                r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
-                html,
-            )
-            emails = list(
-                set(
-                    [
-                        e
-                        for e in emails
-                        if not e.lower().endswith(
-                            (
-                                ".png",
-                                ".jpg",
-                                ".jpeg",
-                                "1",
-                                "2",
-                                "3",
-                                "4",
-                                "5",
-                                "6",
-                                "7",
-                                "8",
-                                "9",
-                                "0",
-                            )
-                        )
-                    ]
-                )
-            )
-            phones = list(set(phones))
-            return emails, phones, html
+            res.raise_for_status()
+            items = res.json() or []
+
+            emails = set()
+            phones = set()
+
+            for item in items:
+                for e in item.get("emails", []):
+                    emails.add(e.lower())
+                for p in item.get("phones", []):
+                    phones.add(p)
+                for p in item.get("phonesUncertain", []):
+                    phones.add(p)
+
+            return list(emails), list(phones)
+
         except Exception as e:
-            print(f"[SCRAPE ERROR] {url}: {e}")
-            return [], [], ""
+            print(f"[APIFY SCRAPE ERROR] {url}: {e}")
+            return [], []
 
-    all_emails, all_phones, html = scrape_page(website)
-    soup = BeautifulSoup(html, "html.parser")
+    # all_emails, all_phones, html = scrape_page(website)
+    # soup = BeautifulSoup(html, "html.parser")
+    
+    all_emails, all_phones = scrape_page_with_apify(website)
 
-    contact_links = []
-    for link in soup.find_all("a", href=True):
-        href = link["href"].lower()
-        if any(k in href for k in ["contact", "about", "team", "staff"]):
-            full_url = urljoin(website, href)
-            domain = urlparse(full_url).netloc
-            if domain == urlparse(website).netloc:
-                contact_links.append(full_url)
-    contact_links = list(set(contact_links))
 
-    for link in contact_links:
-        sub_emails, sub_phones, _ = scrape_page(link)
-        all_emails.extend(sub_emails)
-        all_phones.extend(sub_phones)
+    # contact_links = []
+    # for link in soup.find_all("a", href=True):
+    #     href = link["href"].lower()
+    #     if any(k in href for k in ["contact", "about", "team", "staff"]):
+    #         full_url = urljoin(website, href)
+    #         domain = urlparse(full_url).netloc
+    #         if domain == urlparse(website).netloc:
+    #             contact_links.append(full_url)
+    # contact_links = list(set(contact_links))
+
+    # for link in contact_links:
+    #     sub_emails, sub_phones, _ = scrape_page(link)
+    #     all_emails.extend(sub_emails)
+    #     all_phones.extend(sub_phones)
+
 
     all_emails = list(set(all_emails))
     all_phones = list(set(all_phones))
@@ -1008,116 +1064,116 @@ def ai_router(request):
     return Response({"via": "openai-chat", "reply": reply}, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-def ai_filter_charities(request):
-    """
-    Takes a list of charity dicts (from previous search) + user filter text,
-    and uses GPT to return a filtered subset with reasoning.
-    """
-    try:
-        data = request.data or {}
-        filter_text = (data.get("filter_text") or "").strip()
-        charities = data.get("charities", [])
-        if not filter_text or not charities:
-            return Response(
-                {"error": "filter_text and charities are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+# @csrf_exempt
+# @api_view(["POST"])
+# @permission_classes([permissions.AllowAny])
+# def ai_filter_charities(request):
+#     """
+#     Takes a list of charity dicts (from previous search) + user filter text,
+#     and uses GPT to return a filtered subset with reasoning.
+#     """
+#     try:
+#         data = request.data or {}
+#         filter_text = (data.get("filter_text") or "").strip()
+#         charities = data.get("charities", [])
+#         if not filter_text or not charities:
+#             return Response(
+#                 {"error": "filter_text and charities are required."},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
 
-        filtered, reason, err = _llm_filter_charities(filter_text, charities)
+#         filtered, reason, err = _llm_filter_charities(filter_text, charities)
 
-        if err:
-            return Response(
-                {
-                    "via": "openai-filter",
-                    "error": err,
-                    "matches": [],
-                    "message": reason,
-                    "filter_text": filter_text,
-                },
-                status=500,
-            )
+#         if err:
+#             return Response(
+#                 {
+#                     "via": "openai-filter",
+#                     "error": err,
+#                     "matches": [],
+#                     "message": reason,
+#                     "filter_text": filter_text,
+#                 },
+#                 status=500,
+#             )
 
-        print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
+#         print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
 
-        return Response(
-            {
-                "via": "openai-filter",
-                "message": reason,
-                "matches": filtered,
-                "filter_text": filter_text,
-            },
-            status=200,
-        )
+#         return Response(
+#             {
+#                 "via": "openai-filter",
+#                 "message": reason,
+#                 "matches": filtered,
+#                 "filter_text": filter_text,
+#             },
+#             status=200,
+#         )
 
-    except Exception as e:
-        print(f"[AI FILTER ERROR] {e}")
-        return Response(
-            {
-                "via": "openai-filter",
-                "error": str(e),
-                "matches": [],
-                "message": "AI filter failed.",
-            },
-            status=500,
-        )
+#     except Exception as e:
+#         print(f"[AI FILTER ERROR] {e}")
+#         return Response(
+#             {
+#                 "via": "openai-filter",
+#                 "error": str(e),
+#                 "matches": [],
+#                 "message": "AI filter failed.",
+#             },
+#             status=500,
+#         )
 
-@csrf_exempt
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-def ai_filter_charities(request):
-    """
-    Takes a list of charity dicts (from previous search) + user filter text,
-    and uses GPT to return a filtered subset with reasoning.
-    """
-    try:
-        data = request.data or {}
-        filter_text = (data.get("filter_text") or "").strip()
-        charities = data.get("charities", [])
-        if not filter_text or not charities:
-            return Response(
-                {"error": "filter_text and charities are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+# @csrf_exempt
+# @api_view(["POST"])
+# @permission_classes([permissions.AllowAny])
+# def ai_filter_charities(request):
+#     """
+#     Takes a list of charity dicts (from previous search) + user filter text,
+#     and uses GPT to return a filtered subset with reasoning.
+#     """
+#     try:
+#         data = request.data or {}
+#         filter_text = (data.get("filter_text") or "").strip()
+#         charities = data.get("charities", [])
+#         if not filter_text or not charities:
+#             return Response(
+#                 {"error": "filter_text and charities are required."},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
 
-        filtered, reason, err = _filter_charities_with_ai(filter_text, charities)
+#         filtered, reason, err = _filter_charities_with_ai(filter_text, charities)
 
-        if err:
-            return Response(
-                {
-                    "via": "openai-filter",
-                    "error": err,
-                    "matches": [],
-                    "message": reason,
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+#         if err:
+#             return Response(
+#                 {
+#                     "via": "openai-filter",
+#                     "error": err,
+#                     "matches": [],
+#                     "message": reason,
+#                 },
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
 
-        print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
+#         print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
 
-        return Response(
-            {
-                "via": "openai-filter",
-                "message": reason,
-                "matches": filtered,
-                "filter_text": filter_text,
-            },
-            status=status.HTTP_200_OK,
-        )
+#         return Response(
+#             {
+#                 "via": "openai-filter",
+#                 "message": reason,
+#                 "matches": filtered,
+#                 "filter_text": filter_text,
+#             },
+#             status=status.HTTP_200_OK,
+#         )
 
-    except Exception as e:
-        print(f"[AI FILTER ERROR] {e}")
-        return Response(
-            {
-                "via": "openai-filter",
-                "error": str(e),
-                "matches": [],
-                "message": "AI filter failed.",
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+#     except Exception as e:
+#         print(f"[AI FILTER ERROR] {e}")
+#         return Response(
+#             {
+#                 "via": "openai-filter",
+#                 "error": str(e),
+#                 "matches": [],
+#                 "message": "AI filter failed.",
+#             },
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#         )
 
 
 def _filter_charities_with_ai(filter_text: str, charities: list):
