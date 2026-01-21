@@ -473,7 +473,7 @@ def _perform_database_search(name: str, tin: str):
         if contact_missing and idx < MAX_ENRICH:
             info = get_charity_contact_info(charity.name, charity.address or "")
             updated = False
-            if info.get("website"):
+            if info.get("website") and not charity.website:
                 charity.website = info["website"]
                 updated = True
             if info.get("emails"):
