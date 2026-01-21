@@ -463,8 +463,11 @@ def _perform_database_search(name: str, tin: str):
     any_updated = False
 
     for idx, charity in enumerate(matches):
+        # contact_missing = not (
+        #     charity.website or charity.contact_email or charity.contact_telephone
+        # )
         contact_missing = not (
-            charity.website or charity.contact_email or charity.contact_telephone
+            charity.contact_email and charity.contact_telephone
         )
 
         if contact_missing and idx < MAX_ENRICH:
