@@ -58,6 +58,48 @@ def enrich_charity_contact_info_after_selection(charity_name, address):
     """
     return {"website": None, "emails": [], "phones": []}
 
+def get_charity_contact_info_from_apify(website: str):
+    if not APIFY_TOKEN or not website:
+        return {"emails": [], "phones": []}
+
+    run_url = (
+        "https://api.apify.com/v2/acts/"
+        "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
+    )
+
+    payload = {
+        "startUrls": [{"url": website}],
+        "maxDepth": 1,
+        "maxRequests": 5,
+        "proxyConfiguration": {"useApifyProxy": True},
+    }
+
+    try:
+        res = requests.post(
+            run_url,
+            params={"token": APIFY_TOKEN, "clean": "true"},
+            json=payload,
+            timeout=90,
+        )
+        res.raise_for_status()
+
+        items = res.json() or []
+        emails, phones = set(), set()
+
+        for item in items:
+            emails.update(e.lower() for e in item.get("emails", []))
+            phones.update(item.get("phones", []))
+            phones.update(item.get("phonesUncertain", []))
+
+        return {
+            "emails": list(emails),
+            "phones": list(phones),
+        }
+
+    except Exception as e:
+        print(f"[APIFY ERROR] {website}: {e}")
+        return {"emails": [], "phones": []}
+
 # def get_charity_contact_info(charity_name, address):
 #     """
 #     Try to find website / email / phone for a charity using SERPAPI + scraping.

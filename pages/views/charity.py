@@ -106,11 +106,12 @@ def update_charity(request, tin):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(["POST"])
-@permission_classes([])  # same visibility as AI search
+@permission_classes([])
 def ai_enrich_charity(request):
     """
     Triggered ONLY after user explicitly selects a charity.
     Uses Apify to extract contact info from the website.
+    Returns UPDATED charity so frontend can refresh immediately.
     """
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
@@ -123,12 +124,12 @@ def ai_enrich_charity(request):
 
     charity = get_object_or_404(Charity, id=charity_id)
 
-    # Prevent re-scraping if data already exists
+    # If already enriched, return serialized charity immediately
     if charity.contact_email or charity.contact_telephone:
+        serializer = CharitySerializer(charity)
         return Response(
             {
-                "contact_email": charity.contact_email,
-                "contact_phone": charity.contact_telephone,
+                "charity": serializer.data,
                 "source": "cached",
             },
             status=status.HTTP_200_OK,
@@ -177,19 +178,25 @@ def ai_enrich_charity(request):
         email = next(iter(emails), None)
         phone = next(iter(phones), None)
 
-        # Save ONLY if found
+        updated_fields = []
+
         if email:
             charity.contact_email = email
+            updated_fields.append("contact_email")
+
         if phone:
             charity.contact_telephone = phone
+            updated_fields.append("contact_telephone")
 
-        if email or phone:
-            charity.save(update_fields=["contact_email", "contact_telephone"])
+        if updated_fields:
+            charity.save(update_fields=updated_fields)
+
+        # 🔑 THIS IS THE FIX
+        serializer = CharitySerializer(charity)
 
         return Response(
             {
-                "contact_email": email,
-                "contact_phone": phone,
+                "charity": serializer.data,
                 "source": "apify",
             },
             status=status.HTTP_200_OK,
