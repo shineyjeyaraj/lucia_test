@@ -451,6 +451,35 @@ Provide a concise, helpful answer. Do NOT invent specific charities or EINs.
 #         if len(re.sub(r"\D", "", p)) >= 10:
 #             return p
 #     return phones[0]
+def _get_website_from_serper(charity_name: str, address: str = "") -> str | None:
+    """
+    SERPER-only lookup.
+    Returns website URL or None.
+    NO scraping.
+    NO Apify.
+    NO DB writes.
+    """
+    if not SERP_API_KEY:
+        return None
+
+    try:
+        res = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google",
+                "q": f"{charity_name} official site {address}",
+                "api_key": SERP_API_KEY,
+            },
+            timeout=10,
+        )
+        data = res.json()
+        organic = data.get("organic_results", [])
+        if organic:
+            return organic[0].get("link")
+    except Exception as e:
+        print(f"[SERPER ERROR] {charity_name}: {e}")
+
+    return None
 
 def _perform_database_search(name: str, tin: str):
     """
@@ -492,59 +521,20 @@ def _perform_database_search(name: str, tin: str):
     # after explicit user selection from frontend.
 
     for charity in matches:
-        # contact_missing = not (
-        #     charity.website or charity.contact_email or charity.contact_telephone
-        # )
-        # contact_missing = not (
-        #     charity.contact_email and charity.contact_telephone
-        # )
-        # contact_missing = False
-
-        # if contact_missing and idx < MAX_ENRICH:
-        #     info = get_charity_contact_info(charity.name, charity.address or "")
-        #     updated = False
-        #     # if info.get("website"):
-        #     #     charity.website = info["website"]
-        #     #     updated = True
-        #     # if info.get("emails"):
-        #     #     charity.contact_email = info["emails"][0]
-        #     #     updated = True
-        #     # if info.get("phones"):
-        #     #     charity.contact_telephone = info["phones"][0]
-        #     #     updated = True
-        #     # if info.get("emails"):
-        #     #     charity.contact_email = info["emails"][0]
-
-        #     # if info.get("phones"):
-        #     #     charity.contact_telephone = info["phones"][0]
-
-        #     # if info.get("emails") or info.get("phones"):
-        #     #     updated = True
-
-        #     email = _pick_best_email(info.get("emails"))
-        #     phone = _pick_best_phone(info.get("phones"))
-
-        #     if email:
-        #         charity.contact_email = email
-        #         updated = True
-
-        #     if phone:
-        #         charity.contact_telephone = phone
-        #         updated = True
-
-        #     if info.get("website") and not charity.website:
-        #         charity.website = info["website"]
-        #         updated = True
-
-        #     if updated:
-        #         charity.save()
-        #         any_updated = True
-        #         print(f"[ENRICHED] {charity.name}")
-
         data = CharitySerializer(charity).data
-        # All DB results are verified
+
+        # Restore SERPER website discovery (read-only)
+        if not data.get("website"):
+            website = _get_website_from_serper(
+                charity.name,
+                charity.address or ""
+            )
+            if website:
+                data["website"] = website
+
         data["verified"] = True
         enriched.append(data)
+
 
     needs_clarification = len(enriched) > 1
     # return enriched, any_updated, needs_clarification
