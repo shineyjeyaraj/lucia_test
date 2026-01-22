@@ -1,3 +1,6 @@
+import os
+import requests
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -101,3 +104,99 @@ def update_charity(request, tin):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["POST"])
+@permission_classes([])  # same visibility as AI search
+def ai_enrich_charity(request):
+    """
+    Triggered ONLY after user explicitly selects a charity.
+    Uses Apify to extract contact info from the website.
+    """
+    charity_id = request.data.get("charity_id")
+    website = request.data.get("website")
+
+    if not charity_id or not website:
+        return Response(
+            {"error": "charity_id and website are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    charity = get_object_or_404(Charity, id=charity_id)
+
+    # Prevent re-scraping if data already exists
+    if charity.contact_email or charity.contact_telephone:
+        return Response(
+            {
+                "contact_email": charity.contact_email,
+                "contact_phone": charity.contact_telephone,
+                "source": "cached",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
+    if not APIFY_TOKEN:
+        return Response(
+            {"error": "APIFY_API_TOKEN not configured"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    run_url = (
+        "https://api.apify.com/v2/acts/"
+        "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
+    )
+
+    payload = {
+        "startUrls": [{"url": website}],
+        "maxDepth": 1,
+        "maxRequests": 5,
+        "proxyConfiguration": {"useApifyProxy": True},
+    }
+
+    try:
+        res = requests.post(
+            run_url,
+            params={"token": APIFY_TOKEN, "clean": "true"},
+            json=payload,
+            timeout=90,
+        )
+        res.raise_for_status()
+        items = res.json() or []
+
+        emails = set()
+        phones = set()
+
+        for item in items:
+            for e in item.get("emails", []):
+                emails.add(e.lower())
+            for p in item.get("phones", []):
+                phones.add(p)
+            for p in item.get("phonesUncertain", []):
+                phones.add(p)
+
+        email = next(iter(emails), None)
+        phone = next(iter(phones), None)
+
+        # Save ONLY if found
+        if email:
+            charity.contact_email = email
+        if phone:
+            charity.contact_telephone = phone
+
+        if email or phone:
+            charity.save(update_fields=["contact_email", "contact_telephone"])
+
+        return Response(
+            {
+                "contact_email": email,
+                "contact_phone": phone,
+                "source": "apify",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

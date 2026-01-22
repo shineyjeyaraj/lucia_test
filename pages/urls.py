@@ -44,6 +44,8 @@ urlpatterns = [
 
     path("help-form/", views.help_form_view, name="help-form"),
     path('get_charities/', views.get_charities, name='get_charities'),
+    path("ai-enrich/", views.ai_enrich_charity, name="ai_enrich_charity"),
+
     path('get_donations/', views.get_donations, name='get_charities'),
     path("director/", views.director_view, name="director"),
     # path("lookup/",views.search_and_update_charity, name="lookup"),

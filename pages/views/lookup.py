@@ -20,6 +20,9 @@ from ..serializers import CharitySerializer
 from openai import OpenAI
 
 client = OpenAI()
+
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("OPENAI_API_KEY is not set")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
 
@@ -48,155 +51,163 @@ def _store_last_matches(request, matches):
 def _get_last_matches(request):
     return request.session.get("ai_last_matches", [])
 
-
-def get_charity_contact_info(charity_name, address):
+def enrich_charity_contact_info_after_selection(charity_name, address):
     """
-    Try to find website / email / phone for a charity using SERPAPI + scraping.
-    Only used when DB record is missing contact info.
+    Contact enrichment is disabled during search.
+    This function is only called after explicit user selection.
     """
-    if not SERP_API_KEY:
-        return {"website": None, "emails": [], "phones": []}
+    return {"website": None, "emails": [], "phones": []}
 
-    serp_url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google",
-        "q": f"{charity_name} official site in {address}",
-        "api_key": SERP_API_KEY,
-    }
+# def get_charity_contact_info(charity_name, address):
+#     """
+#     Try to find website / email / phone for a charity using SERPAPI + scraping.
+#     Only used when DB record is missing contact info.
+#     """
+#     if not SERP_API_KEY:
+#         return {"website": None, "emails": [], "phones": []}
 
-    try:
-        res = requests.get(serp_url, params=params, timeout=10)
-        data = res.json()
-        website = None
-        if "organic_results" in data and len(data["organic_results"]) > 0:
-            website = data["organic_results"][0].get("link", None)
-    except Exception as e:
-        print(f"[SERP ERROR] {charity_name}: {e}")
-        return {"website": None, "emails": [], "phones": []}
+#     serp_url = "https://serpapi.com/search.json"
+#     params = {
+#         "engine": "google",
+#         "q": f"{charity_name} official site in {address}",
+#         "api_key": SERP_API_KEY,
+#     }
 
-    if not website:
-        print(f"[SERP] No website found for {charity_name}")
-        return {"website": None, "emails": [], "phones": []}
+#     try:
+#         res = requests.get(serp_url, params=params, timeout=10)
+#         data = res.json()
+#         website = None
+#         if "organic_results" in data and len(data["organic_results"]) > 0:
+#             website = data["organic_results"][0].get("link", None)
+#     except Exception as e:
+#         print(f"[SERP ERROR] {charity_name}: {e}")
+#         return {"website": None, "emails": [], "phones": []}
 
-    # def scrape_page(url):
-    #     try:
-    #         html = requests.get(url, timeout=10).text
-    #         emails = re.findall(
-    #             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
-    #             html,
-    #         )
-    #         phones = re.findall(
-    #             r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
-    #             html,
-    #         )
-    #         emails = list(
-    #             set(
-    #                 [
-    #                     e
-    #                     for e in emails
-    #                     if not e.lower().endswith(
-    #                         (
-    #                             ".png",
-    #                             ".jpg",
-    #                             ".jpeg",
-    #                             "1",
-    #                             "2",
-    #                             "3",
-    #                             "4",
-    #                             "5",
-    #                             "6",
-    #                             "7",
-    #                             "8",
-    #                             "9",
-    #                             "0",
-    #                         )
-    #                     )
-    #                 ]
-    #             )
-    #         )
-    #         phones = list(set(phones))
-    #         return emails, phones, html
-    #     except Exception as e:
-    #         print(f"[SCRAPE ERROR] {url}: {e}")
-    #         return [], [], ""
+#     if not website:
+#         print(f"[SERP] No website found for {charity_name}")
+#         return {"website": None, "emails": [], "phones": []}
 
-    def scrape_page_with_apify(url: str):
-        """
-        Uses Apify actor: vdrmota/contact-info-scraper
-        Returns: (emails, phones)
-        """
-        if not APIFY_TOKEN:
-            print("[APIFY] Missing APIFY_API_TOKEN")
-            return [], []
+#     # def scrape_page(url):
+#     #     try:
+#     #         html = requests.get(url, timeout=10).text
+#     #         emails = re.findall(
+#     #             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}",
+#     #             html,
+#     #         )
+#     #         phones = re.findall(
+#     #             r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
+#     #             html,
+#     #         )
+#     #         emails = list(
+#     #             set(
+#     #                 [
+#     #                     e
+#     #                     for e in emails
+#     #                     if not e.lower().endswith(
+#     #                         (
+#     #                             ".png",
+#     #                             ".jpg",
+#     #                             ".jpeg",
+#     #                             "1",
+#     #                             "2",
+#     #                             "3",
+#     #                             "4",
+#     #                             "5",
+#     #                             "6",
+#     #                             "7",
+#     #                             "8",
+#     #                             "9",
+#     #                             "0",
+#     #                         )
+#     #                     )
+#     #                 ]
+#     #             )
+#     #         )
+#     #         phones = list(set(phones))
+#     #         return emails, phones, html
+#     #     except Exception as e:
+#     #         print(f"[SCRAPE ERROR] {url}: {e}")
+#     #         return [], [], ""
 
-        run_url = (
-            "https://api.apify.com/v2/acts/"
-            "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
-        )
+#     def scrape_page_with_apify(url: str):
+#         """
+#         Uses Apify actor: vdrmota/contact-info-scraper
+#         Returns: (emails, phones)
+#         """
+#         if not APIFY_TOKEN:
+#             print("[APIFY] Missing APIFY_API_TOKEN")
+#             return [], []
 
-        payload = {
-            "startUrls": [{"url": url}],
-            "maxDepth": 1,
-            "maxRequests": 5,
-            "proxyConfiguration": {"useApifyProxy": True},
-        }
+#         run_url = (
+#             "https://api.apify.com/v2/acts/"
+#             "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
+#         )
 
-        try:
-            res = requests.post(
-                run_url,
-                params={
-                    "token": APIFY_TOKEN,
-                    "clean": "true",
-                },
-                json=payload,
-                timeout=90,
-            )
-            res.raise_for_status()
-            items = res.json() or []
+#         payload = {
+#             "startUrls": [{"url": url}],
+#             "maxDepth": 1,
+#             "maxRequests": 5,
+#             "proxyConfiguration": {"useApifyProxy": True},
+#         }
 
-            emails = set()
-            phones = set()
+#         try:
+#             res = requests.post(
+#                 run_url,
+#                 params={
+#                     "token": APIFY_TOKEN,
+#                     "clean": "true",
+#                 },
+#                 json=payload,
+#                 timeout=90,
+#             )
+#             res.raise_for_status()
+#             items = res.json() or []
 
-            for item in items:
-                for e in item.get("emails", []):
-                    emails.add(e.lower())
-                for p in item.get("phones", []):
-                    phones.add(p)
-                for p in item.get("phonesUncertain", []):
-                    phones.add(p)
+#             emails = set()
+#             phones = set()
 
-            return list(emails), list(phones)
+#             for item in items:
+#                 for e in item.get("emails", []):
+#                     emails.add(e.lower())
+#                 for p in item.get("phones", []):
+#                     phones.add(p)
+#                 for p in item.get("phonesUncertain", []):
+#                     phones.add(p)
 
-        except Exception as e:
-            print(f"[APIFY SCRAPE ERROR] {url}: {e}")
-            return [], []
+#             return list(emails), list(phones)
 
-    # all_emails, all_phones, html = scrape_page(website)
-    # soup = BeautifulSoup(html, "html.parser")
+#         except Exception as e:
+#             print(f"[APIFY SCRAPE ERROR] {url}: {e}")
+#             return [], []
+
+#     # all_emails, all_phones, html = scrape_page(website)
+#     # soup = BeautifulSoup(html, "html.parser")
     
-    all_emails, all_phones = scrape_page_with_apify(website)
+#     # all_emails, all_phones = scrape_page_with_apify(website)
+#     all_emails, all_phones = [], []
 
 
-    # contact_links = []
-    # for link in soup.find_all("a", href=True):
-    #     href = link["href"].lower()
-    #     if any(k in href for k in ["contact", "about", "team", "staff"]):
-    #         full_url = urljoin(website, href)
-    #         domain = urlparse(full_url).netloc
-    #         if domain == urlparse(website).netloc:
-    #             contact_links.append(full_url)
-    # contact_links = list(set(contact_links))
 
-    # for link in contact_links:
-    #     sub_emails, sub_phones, _ = scrape_page(link)
-    #     all_emails.extend(sub_emails)
-    #     all_phones.extend(sub_phones)
+#     # contact_links = []
+#     # for link in soup.find_all("a", href=True):
+#     #     href = link["href"].lower()
+#     #     if any(k in href for k in ["contact", "about", "team", "staff"]):
+#     #         full_url = urljoin(website, href)
+#     #         domain = urlparse(full_url).netloc
+#     #         if domain == urlparse(website).netloc:
+#     #             contact_links.append(full_url)
+#     # contact_links = list(set(contact_links))
+
+#     # for link in contact_links:
+#     #     sub_emails, sub_phones, _ = scrape_page(link)
+#     #     all_emails.extend(sub_emails)
+#     #     all_phones.extend(sub_phones)
 
 
-    all_emails = list(set(all_emails))
-    all_phones = list(set(all_phones))
+#     all_emails = list(set(all_emails))
+#     all_phones = list(set(all_phones))
 
-    return {"website": website, "emails": all_emails, "phones": all_phones}
+#     return {"website": website, "emails": all_emails, "phones": all_phones}
 
 def _search_with_openai(search_descriptor: str, previous_context=None):
     """
@@ -227,8 +238,6 @@ Return ONLY JSON:
       "type": "",
       "website": "",
       "address": "",
-      "contact_email": "",
-      "contact_phone": "",
       "tin": "",
       "confidence": 0.0
     }}
@@ -297,101 +306,101 @@ Return ONLY JSON:
     }
 
 
-def _classify_intent_with_openai(message: str, has_previous_matches: bool):
-    """
-    Classify user message into: search | filter | chat
-    We allow the model to consider whether there are previous results.
-    """
-    try:
-        prompt = f"""
-Classify the user's intent for a charity assistant.
+# def _classify_intent_with_openai(message: str, has_previous_matches: bool):
+#     """
+#     Classify user message into: search | filter | chat
+#     We allow the model to consider whether there are previous results.
+#     """
+#     try:
+#         prompt = f"""
+# Classify the user's intent for a charity assistant.
 
-User message: "{message}"
-Previous_results_exist: {str(bool(has_previous_matches)).lower()}
+# User message: "{message}"
+# Previous_results_exist: {str(bool(has_previous_matches)).lower()}
 
-Possible intents:
-- "search": looking for a charity, EIN, or new organization matches.
-- "filter": narrowing or refining existing results (e.g. by city, state, type, branch).
-- "chat": asking general questions, explanations, or small talk.
+# Possible intents:
+# - "search": looking for a charity, EIN, or new organization matches.
+# - "filter": narrowing or refining existing results (e.g. by city, state, type, branch).
+# - "chat": asking general questions, explanations, or small talk.
 
-Return ONLY JSON like:
-{{ "intent": "search" }}
-"""
+# Return ONLY JSON like:
+# {{ "intent": "search" }}
+# """
 
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.0,
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You classify the intent of queries for a charity lookup assistant.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            timeout=10,
-        )
-        raw = completion.choices[0].message.content
-        data = json.loads(raw) if isinstance(raw, str) else raw
-        intent = data.get("intent", "search")
-        if intent not in {"search", "filter", "chat"}:
-            intent = "search"
-        return intent
-    except Exception as e:
-        print(f"[OpenAI Intent Error] {e}")
-        return "search"
+#         completion = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             temperature=0.0,
+#             response_format={"type": "json_object"},
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": "You classify the intent of queries for a charity lookup assistant.",
+#                 },
+#                 {"role": "user", "content": prompt},
+#             ],
+#             timeout=10,
+#         )
+#         raw = completion.choices[0].message.content
+#         data = json.loads(raw) if isinstance(raw, str) else raw
+#         intent = data.get("intent", "search")
+#         if intent not in {"search", "filter", "chat"}:
+#             intent = "search"
+#         return intent
+#     except Exception as e:
+#         print(f"[OpenAI Intent Error] {e}")
+#         return "search"
 
 
-def _llm_filter_charities(filter_text: str, charities: list):
-    """
-    Use LLM to filter a list of charity dicts.
-    Shared by /ai-filter/ endpoint and inline filter inside ai_router.
-    """
-    # Limit to 100 max to save tokens
-    charities = (charities or [])[:100]
+# def _llm_filter_charities(filter_text: str, charities: list):
+#     """
+#     Use LLM to filter a list of charity dicts.
+#     Shared by /ai-filter/ endpoint and inline filter inside ai_router.
+#     """
+#     # Limit to 100 max to save tokens
+#     charities = (charities or [])[:100]
 
-    prompt = f"""
-You are an intelligent charity data filter.
-The user wants to filter the charity list below based on this instruction:
-"{filter_text}"
+#     prompt = f"""
+# You are an intelligent charity data filter.
+# The user wants to filter the charity list below based on this instruction:
+# "{filter_text}"
 
-You will read the JSON list and return only those entries that match the intent.
+# You will read the JSON list and return only those entries that match the intent.
 
-RULES:
-- Never invent new charities or change data.
-- Only return entries that come from the input list.
-- If uncertain, include slightly broader results rather than excluding valid ones.
+# RULES:
+# - Never invent new charities or change data.
+# - Only return entries that come from the input list.
+# - If uncertain, include slightly broader results rather than excluding valid ones.
 
-Return only JSON in the format:
-{{"filtered": [ ...subset of original charities... ], "reason": "explain briefly"}}
+# Return only JSON in the format:
+# {{"filtered": [ ...subset of original charities... ], "reason": "explain briefly"}}
 
-Here is the data (JSON list):
-{json.dumps(charities, indent=2)}
-"""
+# Here is the data (JSON list):
+# {json.dumps(charities, indent=2)}
+# """
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.3,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a precise assistant that filters JSON lists.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            timeout=25,
-        )
+#     try:
+#         completion = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             temperature=0.3,
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": "You are a precise assistant that filters JSON lists.",
+#                 },
+#                 {"role": "user", "content": prompt},
+#             ],
+#             response_format={"type": "json_object"},
+#             timeout=25,
+#         )
 
-        result = completion.choices[0].message.content
-        parsed = json.loads(result)
-        filtered = parsed.get("filtered", []) or []
-        reason = parsed.get("reason", "Filtered based on given instruction.")
-        return filtered, reason, None
-    except Exception as e:
-        print(f"[AI FILTER ERROR] {e}")
-        return [], "AI filter failed.", str(e)
+#         result = completion.choices[0].message.content
+#         parsed = json.loads(result)
+#         filtered = parsed.get("filtered", []) or []
+#         reason = parsed.get("reason", "Filtered based on given instruction.")
+#         return filtered, reason, None
+#     except Exception as e:
+#         print(f"[AI FILTER ERROR] {e}")
+#         return [], "AI filter failed.", str(e)
 
 
 def _chat_with_openai(message: str, request):
@@ -427,6 +436,21 @@ Provide a concise, helpful answer. Do NOT invent specific charities or EINs.
     except Exception as e:
         print(f"[OpenAI Chat Error] {e}")
         return "I had trouble answering that. Please try again."
+# def _pick_best_email(emails):
+#     if not emails:
+#         return None
+#     for e in emails:
+#         if not any(k in e for k in ["media", "press", "career", "jobs", "privacy"]):
+#             return e
+#     return emails[0]
+
+# def _pick_best_phone(phones):
+#     if not phones:
+#         return None
+#     for p in phones:
+#         if len(re.sub(r"\D", "", p)) >= 10:
+#             return p
+#     return phones[0]
 
 def _perform_database_search(name: str, tin: str):
     """
@@ -458,35 +482,64 @@ def _perform_database_search(name: str, tin: str):
             reverse=True,
         )
 
-    MAX_ENRICH = 5
+    # MAX_ENRICH = 5
     enriched = []
-    any_updated = False
+    # any_updated = False
 
-    for idx, charity in enumerate(matches):
+    # IMPORTANT:
+    # Do NOT enrich charities during search.
+    # SERP / Apify enrichment must only occur
+    # after explicit user selection from frontend.
+
+    for charity in matches:
         # contact_missing = not (
         #     charity.website or charity.contact_email or charity.contact_telephone
         # )
-        contact_missing = not (
-            charity.contact_email and charity.contact_telephone
-        )
+        # contact_missing = not (
+        #     charity.contact_email and charity.contact_telephone
+        # )
+        # contact_missing = False
 
-        if contact_missing and idx < MAX_ENRICH:
-            info = get_charity_contact_info(charity.name, charity.address or "")
-            updated = False
-            if info.get("website") and not charity.website:
-                charity.website = info["website"]
-                updated = True
-            if info.get("emails"):
-                charity.contact_email = info["emails"][0]
-                updated = True
-            if info.get("phones"):
-                charity.contact_telephone = info["phones"][0]
-                updated = True
+        # if contact_missing and idx < MAX_ENRICH:
+        #     info = get_charity_contact_info(charity.name, charity.address or "")
+        #     updated = False
+        #     # if info.get("website"):
+        #     #     charity.website = info["website"]
+        #     #     updated = True
+        #     # if info.get("emails"):
+        #     #     charity.contact_email = info["emails"][0]
+        #     #     updated = True
+        #     # if info.get("phones"):
+        #     #     charity.contact_telephone = info["phones"][0]
+        #     #     updated = True
+        #     # if info.get("emails"):
+        #     #     charity.contact_email = info["emails"][0]
 
-            if updated:
-                charity.save()
-                any_updated = True
-                print(f"[ENRICHED] {charity.name}")
+        #     # if info.get("phones"):
+        #     #     charity.contact_telephone = info["phones"][0]
+
+        #     # if info.get("emails") or info.get("phones"):
+        #     #     updated = True
+
+        #     email = _pick_best_email(info.get("emails"))
+        #     phone = _pick_best_phone(info.get("phones"))
+
+        #     if email:
+        #         charity.contact_email = email
+        #         updated = True
+
+        #     if phone:
+        #         charity.contact_telephone = phone
+        #         updated = True
+
+        #     if info.get("website") and not charity.website:
+        #         charity.website = info["website"]
+        #         updated = True
+
+        #     if updated:
+        #         charity.save()
+        #         any_updated = True
+        #         print(f"[ENRICHED] {charity.name}")
 
         data = CharitySerializer(charity).data
         # All DB results are verified
@@ -494,12 +547,14 @@ def _perform_database_search(name: str, tin: str):
         enriched.append(data)
 
     needs_clarification = len(enriched) > 1
-    return enriched, any_updated, needs_clarification
+    # return enriched, any_updated, needs_clarification
+    return enriched, False, needs_clarification
 
 
-def _looks_like_tin(text: str):
-    digits = re.sub(r"\D", "", text or "")
-    return digits.isdigit() and 7 <= len(digits) <= 9
+
+# def _looks_like_tin(text: str):
+#     digits = re.sub(r"\D", "", text or "")
+#     return digits.isdigit() and 7 <= len(digits) <= 9
 
 
 # -----------------------------------------------------------------------------
@@ -601,69 +656,69 @@ def ai_search_charity(request):
     return Response(result, status=status.HTTP_200_OK)
 
 
-def _filter_results_basic(matches, message: str):
-    """Simple local filter: match address/location tokens."""
-    filtered = []
-    msg_lower = (message or "").lower()
-    tokens = [t for t in re.split(r"\s+", msg_lower) if t]
+# def _filter_results_basic(matches, message: str):
+#     """Simple local filter: match address/location tokens."""
+#     filtered = []
+#     msg_lower = (message or "").lower()
+#     tokens = [t for t in re.split(r"\s+", msg_lower) if t]
 
-    for m in matches:
-        combined = f"{m.get('address', '')} {m.get('location', '')}".lower()
-        if all(tok in combined for tok in tokens):
-            filtered.append(m)
+#     for m in matches:
+#         combined = f"{m.get('address', '')} {m.get('location', '')}".lower()
+#         if all(tok in combined for tok in tokens):
+#             filtered.append(m)
 
-    return filtered
+#     return filtered
 
 
-def _clarify_with_openai(message: str, request, last_matches=None):
-    """Ask GPT for a clarification reply."""
-    previous_context = _get_context_from_session(request)
-    context_text = f"\nPrevious context:\n{previous_context}\n" if previous_context else ""
-    match_text = ""
-    if last_matches:
-        top = "\n".join(
-            [f"- {m.get('name')} ({m.get('location', '')})" for m in last_matches[:5]]
-        )
-        match_text = f"\nRecent results:\n{top}\n"
+# def _clarify_with_openai(message: str, request, last_matches=None):
+#     """Ask GPT for a clarification reply."""
+#     previous_context = _get_context_from_session(request)
+#     context_text = f"\nPrevious context:\n{previous_context}\n" if previous_context else ""
+#     match_text = ""
+#     if last_matches:
+#         top = "\n".join(
+#             [f"- {m.get('name')} ({m.get('location', '')})" for m in last_matches[:5]]
+#         )
+#         match_text = f"\nRecent results:\n{top}\n"
 
-    prompt = f"""
-You are a helpful assistant for verified US charities.
+#     prompt = f"""
+# You are a helpful assistant for verified US charities.
 
-User said: "{message}"
-{context_text}
-{match_text}
+# User said: "{message}"
+# {context_text}
+# {match_text}
 
-If this seems like a refinement (e.g., specifying city, state, or road),
-respond with a brief clarification question.
+# If this seems like a refinement (e.g., specifying city, state, or road),
+# respond with a brief clarification question.
 
-Do NOT invent charities or EINs.
-"""
+# Do NOT invent charities or EINs.
+# """
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.4,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a factual assistant for US charity data.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            timeout=15,
-        )
-        reply = completion.choices[0].message.content
-        _update_context_session(request, message, reply)
-        return {
-            "via": "openai-clarifier",
-            "reply": reply,
-        }
-    except Exception as e:
-        print(f"[OpenAI Clarifier Error] {e}")
-        return {
-            "via": "openai-clarifier",
-            "reply": "I had trouble processing that. Could you rephrase it?",
-        }
+#     try:
+#         completion = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             temperature=0.4,
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": "You are a factual assistant for US charity data.",
+#                 },
+#                 {"role": "user", "content": prompt},
+#             ],
+#             timeout=15,
+#         )
+#         reply = completion.choices[0].message.content
+#         _update_context_session(request, message, reply)
+#         return {
+#             "via": "openai-clarifier",
+#             "reply": reply,
+#         }
+#     except Exception as e:
+#         print(f"[OpenAI Clarifier Error] {e}")
+#         return {
+#             "via": "openai-clarifier",
+#             "reply": "I had trouble processing that. Could you rephrase it?",
+#         }
     
 def _parse_query_intent_with_llm(message: str):
     """
@@ -709,6 +764,13 @@ Return ONLY JSON like:
         print(f"[INTENT PARSER ERROR] {e}")
         return {"intent": "chat", "charity_name": "", "tin": "", "filter_text": ""}
 
+def _strip_unverified_contacts(results):
+    for r in results or []:
+        if not r.get("verified"):
+            r.pop("contactEmail", None)
+            r.pop("contact_email", None)
+            r.pop("contactTelephone", None)
+            r.pop("contact_phone", None)
 @csrf_exempt
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -808,7 +870,7 @@ def ai_router(request):
             try:
                 suggestion_prompt = f"""
                 The user searched for "{charity_name}".Along with the query of {message}.
-                Keep the quer in mind as well(e.g. if a location is given give results based on that but don't limit yourself to just that.)
+                Keep the query in mind as well(e.g. if a location is given give results based on that but don't limit yourself to just that.)
                 Suggest other real US charities that might be related or similarly named
                 (e.g., same denomination, nearby branches, or similar spelling variants).
                 Return only real ones, not invented.
@@ -821,8 +883,6 @@ def ai_router(request):
                     "location": "",
                     "website": "",
                     "address": "",
-                    "contact_email": "",
-                    "contact_phone": "",
                     "tin": "",
                     "confidence": 0.0
                     }}
@@ -876,7 +936,9 @@ def ai_router(request):
                 "needs_clarification": needs_clarification,
                 "message": reply_message,
             }
-
+            _strip_unverified_contacts(similar_matches)
+            
+            
             _store_last_matches(request, matches + similar_matches)
             _update_context_session(request, message, reply_message)
             return Response(payload, status=status.HTTP_200_OK)
@@ -893,6 +955,7 @@ def ai_router(request):
         openai_result = _search_with_openai(descriptor, combined_context)
         openai_result["verified"] = False
         openai_result["source"] = "openai"
+        _strip_unverified_contacts(openai_result.get("results", {}).get("matches", []))
         print(openai_result)
 
         reply_message = (
@@ -998,8 +1061,6 @@ def ai_router(request):
         "location": "",
         "website": "",
         "address": "",
-        "contact_email": "",
-        "contact_phone": "",
         "tin": "",
         "confidence": 0.0
         }}
@@ -1051,6 +1112,8 @@ def ai_router(request):
 
         _store_last_matches(request, filtered)
         _update_context_session(request, message, reason)
+        
+        _strip_unverified_contacts(filtered)
 
         print(f"[AI FILTER FINAL] '{filter_text}' → {len(filtered)} results total")
         return Response({
@@ -1065,169 +1128,6 @@ def ai_router(request):
     # (c) Chat intent → use LLM conversationally
     reply = _chat_with_openai(message, request)
     return Response({"via": "openai-chat", "reply": reply}, status=status.HTTP_200_OK)
-
-
-# @csrf_exempt
-# @api_view(["POST"])
-# @permission_classes([permissions.AllowAny])
-# def ai_filter_charities(request):
-#     """
-#     Takes a list of charity dicts (from previous search) + user filter text,
-#     and uses GPT to return a filtered subset with reasoning.
-#     """
-#     try:
-#         data = request.data or {}
-#         filter_text = (data.get("filter_text") or "").strip()
-#         charities = data.get("charities", [])
-#         if not filter_text or not charities:
-#             return Response(
-#                 {"error": "filter_text and charities are required."},
-#                 status=status.HTTP_400_BAD_REQUEST,
-#             )
-
-#         filtered, reason, err = _llm_filter_charities(filter_text, charities)
-
-#         if err:
-#             return Response(
-#                 {
-#                     "via": "openai-filter",
-#                     "error": err,
-#                     "matches": [],
-#                     "message": reason,
-#                     "filter_text": filter_text,
-#                 },
-#                 status=500,
-#             )
-
-#         print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
-
-#         return Response(
-#             {
-#                 "via": "openai-filter",
-#                 "message": reason,
-#                 "matches": filtered,
-#                 "filter_text": filter_text,
-#             },
-#             status=200,
-#         )
-
-#     except Exception as e:
-#         print(f"[AI FILTER ERROR] {e}")
-#         return Response(
-#             {
-#                 "via": "openai-filter",
-#                 "error": str(e),
-#                 "matches": [],
-#                 "message": "AI filter failed.",
-#             },
-#             status=500,
-#         )
-
-# @csrf_exempt
-# @api_view(["POST"])
-# @permission_classes([permissions.AllowAny])
-# def ai_filter_charities(request):
-#     """
-#     Takes a list of charity dicts (from previous search) + user filter text,
-#     and uses GPT to return a filtered subset with reasoning.
-#     """
-#     try:
-#         data = request.data or {}
-#         filter_text = (data.get("filter_text") or "").strip()
-#         charities = data.get("charities", [])
-#         if not filter_text or not charities:
-#             return Response(
-#                 {"error": "filter_text and charities are required."},
-#                 status=status.HTTP_400_BAD_REQUEST,
-#             )
-
-#         filtered, reason, err = _filter_charities_with_ai(filter_text, charities)
-
-#         if err:
-#             return Response(
-#                 {
-#                     "via": "openai-filter",
-#                     "error": err,
-#                     "matches": [],
-#                     "message": reason,
-#                 },
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             )
-
-#         print(f"[AI FILTER] '{filter_text}' → {len(filtered)} results")
-
-#         return Response(
-#             {
-#                 "via": "openai-filter",
-#                 "message": reason,
-#                 "matches": filtered,
-#                 "filter_text": filter_text,
-#             },
-#             status=status.HTTP_200_OK,
-#         )
-
-#     except Exception as e:
-#         print(f"[AI FILTER ERROR] {e}")
-#         return Response(
-#             {
-#                 "via": "openai-filter",
-#                 "error": str(e),
-#                 "matches": [],
-#                 "message": "AI filter failed.",
-#             },
-#             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#         )
-
-
-def _filter_charities_with_ai(filter_text: str, charities: list):
-    """
-    Shared internal helper that uses GPT to filter charity list based on filter_text.
-    Returns: (filtered_list, reason, error)
-    """
-    if not filter_text or not charities:
-        return [], "Missing filter_text or charities", "Missing data"
-
-    charities = charities[:100]  # limit token size
-
-    prompt = f"""
-You are an intelligent charity data filter.
-The user wants to filter the charity list below based on this instruction:
-"{filter_text}"
-
-You will read the JSON list and return only those entries that match the intent.
-
-RULES:
-- Never invent new charities or change data.
-- Only include items from the input list.
-- If uncertain, include slightly broader results.
-- Return only JSON in the format:
-{{"filtered": [ ...subset of original charities... ], "reason": "explain briefly"}}
-
-Here is the data (JSON list):
-{json.dumps(charities, indent=2)}
-"""
-
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.3,
-            messages=[
-                {"role": "system", "content": "You are a precise assistant that filters JSON lists."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            timeout=25,
-        )
-
-        result = completion.choices[0].message.content
-        parsed = json.loads(result)
-        filtered = parsed.get("filtered", []) or []
-        reason = parsed.get("reason", "Filtered based on given instruction.")
-        return filtered, reason, None
-    except Exception as e:
-        print(f"[AI FILTER ERROR] {e}")
-        return [], "AI filter failed.", str(e)
-
 
 @csrf_exempt
 @api_view(["POST"])
