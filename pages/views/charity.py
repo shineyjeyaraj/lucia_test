@@ -105,6 +105,8 @@ def update_charity(request, tin):
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
 @api_view(["POST"])
 @permission_classes([])
 def ai_enrich_charity(request):
@@ -116,26 +118,23 @@ def ai_enrich_charity(request):
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
 
-    # if not charity_id or not website:
-    #     return Response(
-    #         {"error": "charity_id and website are required"},
-    #         status=status.HTTP_400_BAD_REQUEST,
-    #     )
     if not website:
-        return {"error": "website is required"}
-
-    charity = get_object_or_404(Charity, id=charity_id)
-
-    # If already enriched, return serialized charity immediately
-    if charity.contact_email or charity.contact_telephone:
-        serializer = CharitySerializer(charity)
         return Response(
-            {
-                "charity": serializer.data,
-                "source": "cached",
-            },
-            status=status.HTTP_200_OK,
+            {"error": "website is required"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
+
+    charity = None
+    if charity_id:
+        charity = get_object_or_404(Charity, id=charity_id)
+
+        # Already enriched → return immediately
+        if charity.contact_email or charity.contact_telephone:
+            serializer = CharitySerializer(charity)
+            return Response(
+                {"charity": serializer.data, "source": "cached"},
+                status=status.HTTP_200_OK,
+            )
 
     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
     if not APIFY_TOKEN:
@@ -166,39 +165,42 @@ def ai_enrich_charity(request):
         res.raise_for_status()
         items = res.json() or []
 
-        emails = set()
-        phones = set()
+        emails, phones = set(), set()
 
         for item in items:
-            for e in item.get("emails", []):
-                emails.add(e.lower())
-            for p in item.get("phones", []):
-                phones.add(p)
-            for p in item.get("phonesUncertain", []):
-                phones.add(p)
+            emails.update(e.lower() for e in item.get("emails", []))
+            phones.update(item.get("phones", []))
+            phones.update(item.get("phonesUncertain", []))
 
         email = next(iter(emails), None)
         phone = next(iter(phones), None)
 
-        updated_fields = []
+        # Update DB only if charity exists
+        if charity:
+            updated_fields = []
+            if email:
+                charity.contact_email = email
+                updated_fields.append("contact_email")
+            if phone:
+                charity.contact_telephone = phone
+                updated_fields.append("contact_telephone")
 
-        if email:
-            charity.contact_email = email
-            updated_fields.append("contact_email")
+            if updated_fields:
+                charity.save(update_fields=updated_fields)
 
-        if phone:
-            charity.contact_telephone = phone
-            updated_fields.append("contact_telephone")
+            serializer = CharitySerializer(charity)
+            return Response(
+                {"charity": serializer.data, "source": "apify"},
+                status=status.HTTP_200_OK,
+            )
 
-        if updated_fields:
-            charity.save(update_fields=updated_fields)
-
-        # 🔑 THIS IS THE FIX
-        serializer = CharitySerializer(charity)
-
+        # AI-suggested charity → return enrichment only
         return Response(
             {
-                "charity": serializer.data,
+                "charity": {
+                    "contact_email": email,
+                    "contact_telephone": phone,
+                },
                 "source": "apify",
             },
             status=status.HTTP_200_OK,
@@ -209,3 +211,106 @@ def ai_enrich_charity(request):
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+# @api_view(["POST"])
+# @permission_classes([])
+# def ai_enrich_charity(request):
+#     """
+#     Triggered ONLY after user explicitly selects a charity.
+#     Uses Apify to extract contact info from the website.
+#     Returns UPDATED charity so frontend can refresh immediately.
+#     """
+#     charity_id = request.data.get("charity_id")
+#     website = request.data.get("website")
+
+#     if not charity_id or not website:
+#         return Response(
+#             {"error": "charity_id and website are required"},
+#             status=status.HTTP_400_BAD_REQUEST,
+#         )
+
+#     charity = get_object_or_404(Charity, id=charity_id)
+
+#     # If already enriched, return serialized charity immediately
+#     if charity.contact_email or charity.contact_telephone:
+#         serializer = CharitySerializer(charity)
+#         return Response(
+#             {
+#                 "charity": serializer.data,
+#                 "source": "cached",
+#             },
+#             status=status.HTTP_200_OK,
+#         )
+
+#     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
+#     if not APIFY_TOKEN:
+#         return Response(
+#             {"error": "APIFY_API_TOKEN not configured"},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#         )
+
+#     run_url = (
+#         "https://api.apify.com/v2/acts/"
+#         "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
+#     )
+
+#     payload = {
+#         "startUrls": [{"url": website}],
+#         "maxDepth": 1,
+#         "maxRequests": 5,
+#         "proxyConfiguration": {"useApifyProxy": True},
+#     }
+
+#     try:
+#         res = requests.post(
+#             run_url,
+#             params={"token": APIFY_TOKEN, "clean": "true"},
+#             json=payload,
+#             timeout=90,
+#         )
+#         res.raise_for_status()
+#         items = res.json() or []
+
+#         emails = set()
+#         phones = set()
+
+#         for item in items:
+#             for e in item.get("emails", []):
+#                 emails.add(e.lower())
+#             for p in item.get("phones", []):
+#                 phones.add(p)
+#             for p in item.get("phonesUncertain", []):
+#                 phones.add(p)
+
+#         email = next(iter(emails), None)
+#         phone = next(iter(phones), None)
+
+#         updated_fields = []
+
+#         if email:
+#             charity.contact_email = email
+#             updated_fields.append("contact_email")
+
+#         if phone:
+#             charity.contact_telephone = phone
+#             updated_fields.append("contact_telephone")
+
+#         if updated_fields:
+#             charity.save(update_fields=updated_fields)
+
+#         # 🔑 THIS IS THE FIX
+#         serializer = CharitySerializer(charity)
+
+#         return Response(
+#             {
+#                 "charity": serializer.data,
+#                 "source": "apify",
+#             },
+#             status=status.HTTP_200_OK,
+#         )
+
+#     except Exception as e:
+#         return Response(
+#             {"error": str(e)},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#         )
