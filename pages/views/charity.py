@@ -116,11 +116,13 @@ def ai_enrich_charity(request):
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
 
-    if not charity_id or not website:
-        return Response(
-            {"error": "charity_id and website are required"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # if not charity_id or not website:
+    #     return Response(
+    #         {"error": "charity_id and website are required"},
+    #         status=status.HTTP_400_BAD_REQUEST,
+    #     )
+    if not website:
+        return {"error": "website is required"}
 
     charity = get_object_or_404(Charity, id=charity_id)
 
