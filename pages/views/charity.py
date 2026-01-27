@@ -213,49 +213,49 @@ def update_charity(request, tin):
 #             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
 #         )
 
-
 @api_view(["POST"])
 @permission_classes([])
 def ai_enrich_charity(request):
     """
     Triggered ONLY after user explicitly selects a charity.
-    - If website missing → SERPER lookup (saved to DB)
-    - Then Apify enrichment
-    - Returns UPDATED charity for immediate frontend refresh
+    If website missing → SERPER → then APIFY.
     """
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
 
-    if not charity_id:
-        return Response(
-            {"error": "charity_id is required"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    charity = None
+    if charity_id:
+        charity = get_object_or_404(Charity, id=charity_id)
 
-    charity = get_object_or_404(Charity, id=charity_id)
+        # Already enriched → return immediately
+        if charity.contact_email or charity.contact_telephone:
+            serializer = CharitySerializer(charity)
+            return Response(
+                {"charity": serializer.data, "source": "cached"},
+                status=status.HTTP_200_OK,
+            )
 
-    # If already enriched → return immediately
-    if charity.contact_email or charity.contact_telephone:
-        serializer = CharitySerializer(charity)
-        return Response(
-            {"charity": serializer.data, "source": "cached"},
-            status=status.HTTP_200_OK,
-        )
-
-    # 🔹 STEP 1: Resolve website via SERPER if missing
-    if not website:
+    # 🔑 NEW LOGIC: resolve website via SERPER if missing
+    if not website and charity:
         website = _get_website_from_serper(
             charity.name,
             charity.address or ""
         )
+
         if website:
             charity.website = website
             charity.save(update_fields=["website"])
-        else:
-            return Response(
-                {"error": "Unable to determine website via SERPER"},
-                status=status.HTTP_200_OK,
-            )
+
+    # If still no website → stop (no guessing)
+    if not website:
+        serializer = CharitySerializer(charity) if charity else None
+        return Response(
+            {
+                "charity": serializer.data if serializer else {},
+                "source": "no-website",
+            },
+            status=status.HTTP_200_OK,
+        )
 
     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
     if not APIFY_TOKEN:
@@ -264,7 +264,6 @@ def ai_enrich_charity(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    # 🔹 STEP 2: Apify enrichment
     run_url = (
         "https://api.apify.com/v2/acts/"
         "vdrmota~contact-info-scraper/run-sync-get-dataset-items"
@@ -285,8 +284,8 @@ def ai_enrich_charity(request):
             timeout=90,
         )
         res.raise_for_status()
-
         items = res.json() or []
+
         emails, phones = set(), set()
 
         for item in items:
@@ -297,23 +296,34 @@ def ai_enrich_charity(request):
         email = next(iter(emails), None)
         phone = next(iter(phones), None)
 
-        updated_fields = []
+        if charity:
+            updated_fields = []
 
-        if email:
-            charity.contact_email = email
-            updated_fields.append("contact_email")
+            if email:
+                charity.contact_email = email
+                updated_fields.append("contact_email")
 
-        if phone:
-            charity.contact_telephone = phone
-            updated_fields.append("contact_telephone")
+            if phone:
+                charity.contact_telephone = phone
+                updated_fields.append("contact_telephone")
 
-        if updated_fields:
-            charity.save(update_fields=updated_fields)
+            if updated_fields:
+                charity.save(update_fields=updated_fields)
 
-        serializer = CharitySerializer(charity)
+            serializer = CharitySerializer(charity)
+            return Response(
+                {"charity": serializer.data, "source": "apify"},
+                status=status.HTTP_200_OK,
+            )
 
         return Response(
-            {"charity": serializer.data, "source": "apify"},
+            {
+                "charity": {
+                    "contact_email": email,
+                    "contact_telephone": phone,
+                },
+                "source": "apify",
+            },
             status=status.HTTP_200_OK,
         )
 
