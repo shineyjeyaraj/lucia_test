@@ -218,10 +218,17 @@ def update_charity(request, tin):
 def ai_enrich_charity(request):
     """
     Triggered ONLY after user explicitly selects a charity.
-    If website missing → SERPER → then APIFY.
+    Uses Apify to extract contact info from the website.
+    Returns UPDATED charity so frontend can refresh immediately.
     """
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
+
+    # if not website:
+    #     return Response(
+    #         {"error": "website is required"},
+    #         status=status.HTTP_400_BAD_REQUEST,
+    #     )
 
     charity = None
     if charity_id:
@@ -234,29 +241,16 @@ def ai_enrich_charity(request):
                 {"charity": serializer.data, "source": "cached"},
                 status=status.HTTP_200_OK,
             )
-
-    # 🔑 NEW LOGIC: resolve website via SERPER if missing
+            
     if not website and charity:
-        website = _get_website_from_serper(
-            charity.name,
-            charity.address or ""
-        )
-
-        if website:
-            charity.website = website
-            charity.save(update_fields=["website"])
-
-    # If still no website → stop (no guessing)
+        website = charity.website
+        
     if not website:
-        serializer = CharitySerializer(charity) if charity else None
         return Response(
-            {
-                "charity": serializer.data if serializer else {},
-                "source": "no-website",
-            },
-            status=status.HTTP_200_OK,
+            {"error": "website is required"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
-
+        
     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
     if not APIFY_TOKEN:
         return Response(
@@ -296,13 +290,12 @@ def ai_enrich_charity(request):
         email = next(iter(emails), None)
         phone = next(iter(phones), None)
 
+        # Update DB only if charity exists
         if charity:
             updated_fields = []
-
             if email:
                 charity.contact_email = email
                 updated_fields.append("contact_email")
-
             if phone:
                 charity.contact_telephone = phone
                 updated_fields.append("contact_telephone")
@@ -316,6 +309,7 @@ def ai_enrich_charity(request):
                 status=status.HTTP_200_OK,
             )
 
+        # AI-suggested charity → return enrichment only
         return Response(
             {
                 "charity": {
