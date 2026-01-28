@@ -218,7 +218,7 @@ def update_charity(request, tin):
 def ai_enrich_charity(request):
     """
     Triggered ONLY after user explicitly selects a charity.
-    Uses Apify to extract contact info from the website.
+    Uses SERPER (if needed) + Apify to extract contact info.
     Returns UPDATED charity so frontend can refresh immediately.
     """
     charity_id = request.data.get("charity_id")
@@ -236,43 +236,21 @@ def ai_enrich_charity(request):
                 status=status.HTTP_200_OK,
             )
 
-    # Fallback to DB website
-    if not website and charity:
-        website = charity.website
+        # 🔹 NEW: website fallback via SERPER on selection
+        if not website:
+            website = _get_website_from_serper(
+                charity.name,
+                charity.address or ""
+            )
+            if website:
+                charity.website = website
+                charity.save(update_fields=["website"])
 
-    # SERPER fallback (by charity name)
-    if not website and charity:
-        SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-        if SERPER_API_KEY:
-            try:
-                serper_res = requests.post(
-                    "https://google.serper.dev/search",
-                    headers={
-                        "X-API-KEY": SERPER_API_KEY,
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "q": f"{charity.name} official website",
-                        "num": 1,
-                    },
-                    timeout=30,
-                )
-                if serper_res.status_code == 200:
-                    data = serper_res.json()
-                    organic = data.get("organic", [])
-                    if organic:
-                        website = organic[0].get("link")
-            except Exception:
-                pass  # Serper failure should NOT break flow
-
-    # Final guard
     if not website:
         return Response(
-            {"error": "website is required"},
+            {"error": "website could not be determined"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
-    # ---------------- Apify (UNCHANGED) ----------------
 
     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
     if not APIFY_TOKEN:
@@ -304,7 +282,6 @@ def ai_enrich_charity(request):
         items = res.json() or []
 
         emails, phones = set(), set()
-
         for item in items:
             emails.update(e.lower() for e in item.get("emails", []))
             phones.update(item.get("phones", []))
@@ -313,7 +290,6 @@ def ai_enrich_charity(request):
         email = next(iter(emails), None)
         phone = next(iter(phones), None)
 
-        # Update DB only if charity exists
         if charity:
             updated_fields = []
             if email:
