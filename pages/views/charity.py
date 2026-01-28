@@ -224,12 +224,6 @@ def ai_enrich_charity(request):
     charity_id = request.data.get("charity_id")
     website = request.data.get("website")
 
-    # if not website:
-    #     return Response(
-    #         {"error": "website is required"},
-    #         status=status.HTTP_400_BAD_REQUEST,
-    #     )
-
     charity = None
     if charity_id:
         charity = get_object_or_404(Charity, id=charity_id)
@@ -241,16 +235,45 @@ def ai_enrich_charity(request):
                 {"charity": serializer.data, "source": "cached"},
                 status=status.HTTP_200_OK,
             )
-            
+
+    # Fallback to DB website
     if not website and charity:
         website = charity.website
-        
+
+    # SERPER fallback (by charity name)
+    if not website and charity:
+        SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+        if SERPER_API_KEY:
+            try:
+                serper_res = requests.post(
+                    "https://google.serper.dev/search",
+                    headers={
+                        "X-API-KEY": SERPER_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "q": f"{charity.name} official website",
+                        "num": 1,
+                    },
+                    timeout=30,
+                )
+                if serper_res.status_code == 200:
+                    data = serper_res.json()
+                    organic = data.get("organic", [])
+                    if organic:
+                        website = organic[0].get("link")
+            except Exception:
+                pass  # Serper failure should NOT break flow
+
+    # Final guard
     if not website:
         return Response(
             {"error": "website is required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-        
+
+    # ---------------- Apify (UNCHANGED) ----------------
+
     APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
     if not APIFY_TOKEN:
         return Response(
@@ -309,7 +332,6 @@ def ai_enrich_charity(request):
                 status=status.HTTP_200_OK,
             )
 
-        # AI-suggested charity → return enrichment only
         return Response(
             {
                 "charity": {
