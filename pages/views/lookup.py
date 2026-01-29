@@ -576,12 +576,12 @@ def _perform_database_search(name: str, tin: str):
 
     #     data["verified"] = True
     #     enriched.append(data)
-    MAX_SEARCH_ENRICH = 5
+    MAX_SEARCH_ENRICH = 1
 
     for idx, charity in enumerate(matches):
         data = CharitySerializer(charity).data
 
-        # 🔹 Only enrich TOP 5 charities during search
+        # 🔹 Only enrich TOP 1 charities during search
         if idx < MAX_SEARCH_ENRICH and not data.get("website"):
             website = _get_website_from_serper(
                 charity.name,
