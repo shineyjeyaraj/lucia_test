@@ -562,11 +562,27 @@ def _perform_database_search(name: str, tin: str):
     # SERP / Apify enrichment must only occur
     # after explicit user selection from frontend.
 
-    for charity in matches:
+    # for charity in matches:
+    #     data = CharitySerializer(charity).data
+
+    #     # # Restore SERPER website discovery (read-only)
+    #     # if not data.get("website"):
+    #     #     website = _get_website_from_serper(
+    #     #         charity.name,
+    #     #         charity.address or ""
+    #     #     )
+    #     #     if website:
+    #     #         data["website"] = website
+
+    #     data["verified"] = True
+    #     enriched.append(data)
+    MAX_SEARCH_ENRICH = 5
+
+    for idx, charity in enumerate(matches):
         data = CharitySerializer(charity).data
 
-        # Restore SERPER website discovery (read-only)
-        if not data.get("website"):
+        # 🔹 Only enrich TOP 5 charities during search
+        if idx < MAX_SEARCH_ENRICH and not data.get("website"):
             website = _get_website_from_serper(
                 charity.name,
                 charity.address or ""
