@@ -222,10 +222,7 @@ def ai_enrich_charity(request):
     Returns UPDATED charity so frontend can refresh immediately.
     """
     charity_id = request.data.get("charity_id")
-    website = request.data.get("website") or charity.website
-    print("[ENRICH] charity_id:", charity_id)
-    print("[ENRICH] website from request:", request.data.get("website"))
-    print("[ENRICH] website from db:", charity.website)
+    website = request.data.get("website")
 
     charity = None
     if charity_id:
